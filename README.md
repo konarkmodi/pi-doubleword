@@ -129,7 +129,7 @@ How to read it:
 
 ## Step 4 — Verify instructions and skills actually arrive
 
-This is the step I skipped — and it cost me. Here's what happened, in one paragraph: pi encodes its system prompt (harness rules, tool guidance, your `<available_skills>` block) as a `developer`-role message for reasoning-capable OpenAI-compatible models. OpenAI treats `developer` as the successor to `system`. In my tests with GLM-5.3-Flash, instructions sent through the `developer` role were **not followed, despite the endpoint returning HTTP 200** — the same instructions sent through `system` were followed. The exact server-side cause (gateway drop, translation, priority handling) remains unknown; the operational outcome doesn't. Result: my model ran with *no system prompt at all* — improvised identities, denied skills, self-descriptions that changed between sessions.
+This is the step I skipped — and it cost me. Here's what happened, in one paragraph: pi encodes its system prompt (harness rules, tool guidance, your `<available_skills>` block) as a `developer`-role message for reasoning-capable OpenAI-compatible models. OpenAI treats `developer` as the successor to `system`. In my tests with GLM-5.3-Flash, instructions sent through the `developer` role were **not followed, despite the endpoint returning HTTP 200** — the same instructions sent through `system` were followed. The exact server-side cause (gateway drop, translation, priority handling) remains unknown; the operational outcome doesn't. Result: the tested instructions — harness rules, tool guidance, the `<available_skills>` block — were not acted on; the model answered *questions* correctly all day while improvising identities, denying skills, and inventing self-descriptions that changed between sessions. Whether *every* byte of the system prompt was absent is not established; nothing believed to be delivered behaved as delivered.
 
 The fix is one line, already inside the extension:
 
@@ -137,7 +137,7 @@ The fix is one line, already inside the extension:
 compat: { supportsDeveloperRole: false },
 ```
 
-This tells pi to send instructions as plain `system` — the one role every OpenAI-compatible backend honors. But **verify your own setup**, because vendors change and catalogs rotate. Two checks, thirty seconds total:
+This tells pi to send instructions as plain `system` — the role the tested endpoint demonstrably honors, and the long-standing convention across the compatible ecosystem. "Demonstrably" is the operative word: role handling is a per-endpoint, per-model fact, which is exactly why the checks below exist. Two checks, thirty seconds total:
 
 **Skill check.** Ask pi directly:
 
@@ -202,7 +202,7 @@ Reference run of the first (5 interleaved rounds/tier): flex's published rates a
 | `/doubleword-mode` (no arg) | Show current tier |
 | `/doubleword-mode async\|realtime` | Switch tier for this session (rebinds live) |
 | `DOUBLEWORD_EXECUTION_MODE` | Default tier: `async` (default) or `realtime` |
-| `DOUBLEWORD_BASE_URL` | Override API base (for gateways/proxies; default `https://api.doubleword.ai/v1`) |
+| `DOUBLEWORD_BASE_URL` | Override API base (for gateways/proxies; default `https://api.doubleword.ai/v1`). **Note:** a custom value authorizes sending the configured Doubleword credential to that endpoint — set it only for hosts you trust |
 | `DOUBLEWORD_CONTEXT_WINDOW` | Fallback context window (131072) if the catalog doesn't say |
 | `DOUBLEWORD_MAX_OUTPUT_TOKENS` | Fallback output limit (16384) |
 

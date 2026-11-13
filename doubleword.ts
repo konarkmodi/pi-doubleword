@@ -19,7 +19,13 @@
  *                                If unset, the provider shows as unconfigured and you
  *                                can store a key with `/login`.
  *   DOUBLEWORD_BASE_URL          API base URL. Default: https://api.doubleword.ai/v1
- *                                (self-hosted Control Layer: your own /v1 endpoint)
+ *                                (self-hosted Control Layer: your own /v1 endpoint).
+ *                                SECURITY NOTE: setting this to a custom endpoint
+ *                                AUTHORIZES sending the configured Doubleword
+ *                                credential (env var or stored key) to that host —
+ *                                the extension does not double-guess the override.
+ *                                A keyless pi-side credential (`!command`) is still
+ *                                left to pi's own machinery.
  *   DOUBLEWORD_EXECUTION_MODE    "async" (default) or "realtime"
  *   DOUBLEWORD_CONTEXT_WINDOW    Fallback context window (default 131072) when the
  *                                API does not advertise one
@@ -453,6 +459,13 @@ interface DoublewordProviderConfig {
 
 export default async function doublewordExtension(pi: ExtensionAPI) {
 	const baseUrl = process.env.DOUBLEWORD_BASE_URL?.trim() || DEFAULT_BASE_URL;
+	// Credential policy: overriding the endpoint via DOUBLEWORD_BASE_URL is a
+	// deliberate operator decision — overriding AUTHORIZES sending the configured
+	// Doubleword credential (env var or stored key) to that host. The extension
+	// therefore doesn't silently re-point stored credentials: with a custom
+	// endpoint, only DOUBLEWORD_API_KEY supplies a key here (pi-side credential
+	// stores are left to pi's own resolution at request time).
+	const customEndpoint = baseUrl !== DEFAULT_BASE_URL;
 	let mode: Mode = normMode(process.env.DOUBLEWORD_EXECUTION_MODE) ?? "async";
 	let lastError: string | undefined;
 
@@ -468,7 +481,7 @@ export default async function doublewordExtension(pi: ExtensionAPI) {
 	try {
 		currentModels = await fetchCatalogModels(
 			baseUrl,
-			process.env.DOUBLEWORD_API_KEY || storedKey,
+			process.env.DOUBLEWORD_API_KEY || (customEndpoint ? undefined : storedKey),
 			AbortSignal.timeout(20_000),
 			mode,
 		);
@@ -491,8 +504,11 @@ export default async function doublewordExtension(pi: ExtensionAPI) {
 		// entries survive as fallback until a credentialed refresh succeeds.
 		const apiKeyClaim = process.env.DOUBLEWORD_API_KEY
 			? { apiKey: "$DOUBLEWORD_API_KEY" }
-			: storedKey
-				? { apiKey: storedKey }
+			: storedKey && !customEndpoint
+				? // Stored credentials are only claimed for the default endpoint; a
+					// custom DOUBLEWORD_BASE_URL means the operator wires credentials
+					// themselves (env var or pi's own credential machinery).
+					{ apiKey: storedKey }
 				: {};
 		const config: DoublewordProviderConfig = {
 			name: "Doubleword",

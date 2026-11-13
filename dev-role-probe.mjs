@@ -47,7 +47,7 @@ const API_KEY =
           const models = JSON.parse(readFileSync(process.env.HOME + "/.pi/agent/models.json", "utf8"));
           const raw = models?.providers?.doubleword?.apiKey;
           if (typeof raw === "string" && raw.startsWith("$")) return process.env[raw.slice(1)];
-          return raw;
+          if (typeof raw === "string" && raw.startsWith("!")) return undefined; // !command: pi-side dynamic key, not a literal
         } catch {
           return undefined;
         }
