@@ -162,7 +162,7 @@ interface Rates {
 	cacheWrite: number;
 }
 
-const ZERO_COST: Rates = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+const UNKNOWN_COST: Rates = { input: NaN, output: NaN, cacheRead: NaN, cacheWrite: NaN };
 
 type RateField = keyof Rates;
 
@@ -280,10 +280,20 @@ function withCachePricing(rates: Rates, cachePricing: unknown): Rates {
 	};
 }
 
-/** Tariffs are per-token already (verified shape); per-1M quoted values convert too. */
+/** Tariffs are per-token already (verified shape); per-1M quoted values convert too.
+ *  Unit detection is heuristic (magnitude): a per-token string smaller than 0.001
+ *  is treated as per-token, everything else as per-1M. The live Doubleword shape
+ *  is "0.00000038"-style per-token strings, so this is safe today — but it IS a
+ *  heuristic, which is why UNKNOWN_COST ever shows up at all. */
 function toTokenRates(rates: Rates): Rates {
-	const largest = Math.max(rates.input, rates.output, rates.cacheRead, rates.cacheWrite);
+	const largest = Math.max(
+		rates.input,
+		rates.output,
+		rates.cacheRead,
+		rates.cacheWrite,
+	);
 	if (largest > 0 && largest < 0.001) return rates; // already per-token
+	if (largest === 0) return UNKNOWN_COST; // no usable prices parsed
 	return {
 		input: rates.input / 1_000_000,
 		output: rates.output / 1_000_000,
@@ -295,7 +305,9 @@ function toTokenRates(rates: Rates): Rates {
 function costFor(raw: unknown, mode: Mode): Rates {
 	const tariffs = lookup(raw, ["tariffs", "tariff", "pricing", "prices"]);
 	const tiers = collectTiers(tariffs);
-	if (!tiers.length) return ZERO_COST;
+	// Pricing is unknown when no tier parses — visible as NaN in pi's UI, never
+	// as a misleading $0. A zero can only mean the API genuinely quoted zero.
+	if (!tiers.length) return UNKNOWN_COST;
 	// The server may not publish every tier for every model; fall back in the
 	// order a mismatched request would realistically be billed.
 	const order: TierEntry["key"][] =
@@ -392,7 +404,7 @@ function mapCatalog(payload: unknown, mode: Mode): ProviderModelConfig[] {
 // Networking
 // ---------------------------------------------------------------------------
 
-async function fetchCatalog(baseUrl: string, apiKey: string | undefined, signal: AbortSignal): Promise<unknown> {
+async function fetchCatalog(baseUrl: string, apiKey: string | undefined, signal: AbortSignal | undefined): Promise<unknown> {
 	const url = `${baseUrl.replace(/\/+$/, "")}/models?include=pricing`;
 	const headers: Record<string, string> = { Accept: "application/json" };
 	if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
@@ -407,7 +419,7 @@ async function fetchCatalog(baseUrl: string, apiKey: string | undefined, signal:
 async function fetchCatalogModels(
 	baseUrl: string,
 	apiKey: string | undefined,
-	signal: AbortSignal,
+	signal: AbortSignal | undefined,
 	mode: Mode,
 ): Promise<ProviderModelConfig[]> {
 	return mapCatalog(await fetchCatalog(baseUrl, apiKey, signal), mode);
@@ -513,7 +525,14 @@ export default async function doublewordExtension(pi: ExtensionAPI) {
 	// list, and the session keeps streaming with its already-bound Model object.
 	// Re-register with the fresh catalog and swap the session onto the refreshed
 	// instance so sampling params (service_tier) and pricing take effect live.
-	const applyRefreshedCatalog = async (ctx: { model?: { provider: string; id: string } | undefined }) => {
+	// ctx also carries modelRegistry (and other helpers); the structural type
+	// here only names what this function uses.
+	const applyRefreshedCatalog = async (ctx: {
+		model?: { provider: string; id: string } | undefined;
+		modelRegistry: {
+			find: (provider: string, id: string) => unknown;
+		};
+	}) => {
 		register();
 		const current = ctx.model;
 		if (!current || current.provider !== "doubleword" || !pi.setModel) return;

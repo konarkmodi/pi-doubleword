@@ -9,7 +9,7 @@
 A pi setup where:
 
 - `GET /v1/models?include=pricing` is fetched at startup, and **all 18 chat models** (GLM, Qwen, DeepSeek, Kimi, Gemma, …) appear with **live per-token pricing** mapped to pi's cost fields — from the realtime, async, and batch tariffs Doubleword publishes per model.
-- **Flex is the default tier**: every request carries `service_tier: "flex"`, Doubleword's cheaper async execution mode.flipping to realtime is one command: `/doubleword-mode realtime` (per session) or `export DOUBLEWORD_EXECUTION_MODE=realtime` (global).
+- **Flex is the default tier**: every request carries `service_tier: "flex"`, Doubleword's cheaper async execution mode. Flipping to realtime is one command: `/doubleword-mode realtime` (per session) or `export DOUBLEWORD_EXECUTION_MODE=realtime` (global).
 - Your key can live wherever pi already keeps keys — environment variable, `models.json`, or `/login` storage — no juggling.
 - Catalog refresh, model switch, and tier switching all take effect **live** — the session rebinds to fresh model objects instead of waiting for a restart.
 - And critically: **the system prompt — skills, rules, harness context — actually reaches the model.** I'll show you the check for that, because on Doubleword it can silently fail.
@@ -53,8 +53,10 @@ Save [doubleword.ts](./doubleword.ts) into `~/.pi/agent/extensions/`:
 ```bash
 mkdir -p ~/.pi/agent/extensions
 curl -o ~/.pi/agent/extensions/doubleword.ts \
-  https://raw.githubusercontent.com/konarkmodi/pi-doubleword/main/doubleword.ts
+  https://raw.githubusercontent.com/konarkmodi/pi-doubleword/dc28fe205e18c5b774cf961f01210ce6d37948bd/doubleword.ts
 ```
+
+(Pinned to a commit SHA: pi executes extensions, so installing from a moving `main` is policy you didn't choose. Bump the SHA deliberately when you adopt updates.)
 
 (Or: clone the repo, copy the file. It's one TypeScript file, no dependencies.)
 
@@ -108,7 +110,7 @@ Realtime mode removes the `service_tier` sampling param entirely (there's nothin
 MODEL=zai-org/GLM-5.3-Flash node flex-bench.mjs
 ```
 
-A real run (GLM-5.3-Flash, Nov 2025, 5 interleaved rounds/tier):
+A real run (GLM-5.3-Flash, Nov 2026, 5 interleaved rounds/tier):
 
 | | realtime | flex (`service_tier:"flex"`) | Δ |
 |---|---|---|---|
@@ -127,7 +129,7 @@ How to read it:
 
 ## Step 4 — Verify instructions and skills actually arrive
 
-This is the step I skipped — and it cost me. Here's what happened, in one paragraph: pi encodes its system prompt (harness rules, tool guidance, your `<available_skills>` block) as a `developer`-role message for reasoning-capable OpenAI-compatible models. OpenAI treats `developer` as the successor to `system`. Doubleword's backend **accepts the field and silently drops it**. Result: my model had *no system prompt at all* — it improvised identities, denied having skills, and invented self-descriptions that changed between sessions. No error anywhere.
+This is the step I skipped — and it cost me. Here's what happened, in one paragraph: pi encodes its system prompt (harness rules, tool guidance, your `<available_skills>` block) as a `developer`-role message for reasoning-capable OpenAI-compatible models. OpenAI treats `developer` as the successor to `system`. In my tests with GLM-5.3-Flash, instructions sent through the `developer` role were **not followed, despite the endpoint returning HTTP 200** — the same instructions sent through `system` were followed. The exact server-side cause (gateway drop, translation, priority handling) remains unknown; the operational outcome doesn't. Result: my model ran with *no system prompt at all* — improvised identities, denied skills, self-descriptions that changed between sessions.
 
 The fix is one line, already inside the extension:
 
@@ -172,7 +174,7 @@ system     PASS — model recalled the callsign
 developer  FAIL  ⇢ replied: "GLM"
 ```
 
-Verdicts it emits: both pass ✅ · silent drop ⚠️ · **HTTP 400 reject** ⛔ (this one is real — some models on the same backend reject the `developer` role outright, meaning any modern OpenAI SDK client crashes on them). Interesting detail: on Doubleword, GLM **silently ignores** `developer` while Qwen **rejects it** — "OpenAI-compatible" describes request shape, not semantics.
+Verdicts it emits: both pass ✅ · developer-role instructions not followed ⚠️ · **HTTP 400 reject** ⛔ (this one is real — some models on the same backend reject the `developer` role outright, meaning any modern OpenAI SDK client crashes on them). Interesting detail: on Doubleword, GLM **does not follow** `developer`-role instructions (HTTP 200, no effect) while Qwen **rejects them** — "OpenAI-compatible" describes request shape, not semantics.
 
 ## Reproduce the numbers
 

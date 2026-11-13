@@ -4,7 +4,9 @@
 // Usage:
 //   MODEL=zai-org/GLM-5.3-Flash node flex-bench.mjs
 //   BASE_URL=https://api.doubleword.ai/v1 MODEL=... API_KEY=sk-... N=5 MAXTOK=1500 node flex-bench.mjs
-//   (without API_KEY, falls back to the provider's apiKey in ~/.pi/agent/models.json)
+//   (without API_KEY, falls back to Doubleword's apiKey in ~/.pi/agent/models.json;
+//    custom endpoints require an explicit API_KEY — a stored Doubleword credential
+//    is never sent to another host)
 //
 // Measures, per tier (realtime vs service_tier:"flex"), over N interleaved runs:
 //   - TTFT (streaming: first token of any kind, reasoning included — i.e. what
@@ -20,6 +22,31 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 const BASE_URL = (process.env.BASE_URL ?? "https://api.doubleword.ai/v1").replace(/\/+$/, "");
+// Same credential policy as dev-role-probe.mjs: with a custom BASE_URL, require
+// an explicit API_KEY — a stored Doubleword key is never sent to another host.
+// $ENV_NAME references in models.json are resolved.
+const DEFAULT_ENDPOINT = BASE_URL === "https://api.doubleword.ai/v1";
+const API_KEY =
+  process.env.API_KEY ??
+  (DEFAULT_ENDPOINT
+    ? (() => {
+        try {
+          const models = JSON.parse(readFileSync(process.env.HOME + "/.pi/agent/models.json", "utf8"));
+          const raw = models?.providers?.doubleword?.apiKey;
+          if (typeof raw === "string" && raw.startsWith("$")) return process.env[raw.slice(1)];
+          return raw;
+        } catch {
+          return undefined;
+        }
+      })()
+    : undefined);
+if (!DEFAULT_ENDPOINT && !API_KEY) {
+  console.error(
+    "Refusing to run without an explicit API_KEY: BASE_URL is a custom endpoint, and this\n" +
+      "script will not send a stored Doubleword credential to it. Set API_KEY=... explicitly.",
+  );
+  process.exit(1);
+}
 const MODEL = process.env.MODEL;
 if (!MODEL) {
   console.error("Usage: MODEL=provider/model [API_KEY=...] [N=5] [MAXTOK=1500] node flex-bench.mjs");
@@ -27,16 +54,6 @@ if (!MODEL) {
 }
 const N = Number(process.env.N ?? 5);
 const MAXTOK = Number(process.env.MAXTOK ?? 2000); // reasoning models burn budget thinking; leave headroom
-const API_KEY =
-  process.env.API_KEY ??
-  (() => {
-    try {
-      const models = JSON.parse(readFileSync(process.env.HOME + "/.pi/agent/models.json", "utf8"));
-      return models?.providers?.doubleword?.apiKey;
-    } catch {
-      return undefined;
-    }
-  })();
 
 const CALLSIGN = randomBytes(4).toString("hex");
 const PROMPT = `Benchmark ${CALLSIGN}. Write a fluent explanation, roughly 200 words, of why the sky is blue, for a curious ten-year-old. No headings, no lists.`;

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Syntax-check probe & bench scripts
+        run: |
+          node --check dev-role-probe.mjs
+          node --check flex-bench.mjs
+
+      - name: Typecheck the pi extension
+        run: |
+          npm init -y >/dev/null
+          npm pkg set type=module >/dev/null
+          npm install --no-save --no-audit --no-fund \
+            typescript@5 \
+            @types/node@22 \
+            @earendil-works/pi-coding-agent@1 >/dev/null
+          npx tsc --noEmit --strict \
+            --target es2022 --module esnext --moduleResolution bundler \
+            --skipLibCheck doubleword.ts

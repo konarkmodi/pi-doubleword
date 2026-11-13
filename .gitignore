@@ -1,3 +1,23 @@
 .DS_Store
 node_modules/
 *.log
+
+# Local credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.credentials.json
+
+# Local application configuration (may contain provider keys)
+auth.json
+models.json
+settings.local.json
+
+# Temporary output
+tmp/
+temp/
+coverage/
