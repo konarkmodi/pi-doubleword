@@ -184,6 +184,10 @@ The whole piece is self-verifying, with three commands:
 # Tier economics — TTFT, total latency, tok/s, $ per request, realtime vs flex:
 MODEL=zai-org/GLM-5.3-Flash node flex-bench.mjs
 
+# Cache × tier — hit rate & shared-pool verdict on real AgentX payloads:
+AGENTX_INPUTS=~/projects/agentx-experiments/results/modal2-synth-c128/inputs.json \
+  SESSIONS=3 TURNS=3 node agentx-cache-bench.mjs
+
 # Instruction delivery — does developer-role content reach the model?
 MODEL=zai-org/GLM-5.3-Flash node dev-role-probe.mjs
 
@@ -193,6 +197,27 @@ time DOUBLEWORD_EXECUTION_MODE=realtime pi --no-session --print "Reply with the 
 ```
 
 Reference run of the first (5 interleaved rounds/tier): flex's published rates are 24–27% lower and estimated request costs came out lower on every matched pair; median TTFT 0.17 s (realtime) vs 4.84 s (flex), median *total* latency within ~0.4 s. `time pi` variant: ~1.8 s vs ~1.2 s whole-process. Your numbers will differ — that's why the scripts ship.
+
+### What the cache is worth — and who it serves
+
+[`agentx-cache-bench.mjs`](./agentx-cache-bench.mjs) replays [AgentX](https://github.com/konarkmodi/agentx-experiments) aiperf session payloads (~4,000-token contexts) as an agent-style multi-turn loop and interleaves the two tiers on the *same* growing conversation, so prompt-cache behavior is directly observable per request:
+
+```bash
+AGENTX_INPUTS=~/projects/agentx-experiments/results/modal2-synth-c128/inputs.json \
+  SESSIONS=3 TURNS=3 node agentx-cache-bench.mjs
+```
+
+Measured on GLM-5.3-Flash (Nov 2026, Doubleword), read multiplier ×0.2, min prefix 1,024 tok:
+
+| Question | Measured answer |
+| --- | --- |
+| Do sync and async share one cache? | **Yes.** Both tiers scored hits on the identical interleaved prefix, in both directions (realtime read flex's writes and vice versa). Cache is a property of the deployment, not the tier. |
+| What does a warm hit save? | Cached prefix tokens are billed at ×0.2. Realized request-cost reduction scales with the hit rate: **−40% to −53%** when hits landed on ~80–96% of prompt tokens; −8% during a low-hit run. |
+| Are hits guaranteed? | **No.** Realized hit rate swung 0–96% between runs identical in construction — consistent with the 5-minute write window plus routing variance across serving workers. Treat cache as opportunistic; agents active within 5-minute bursts benefit most. |
+| Does async change the cache? | Hit pattern ~identical across tiers (one run landed on *exactly* 15.7% hit rate for both). The async discount (−24/−27% rates) is **independent** — the two discounts multiply rather than compete. |
+| Can you see cache writes? | Not on this endpoint: `cache_creation_input_tokens` stays 0; writes are only observable via later reads. |
+
+Note: the script prints a warning when "cold" turns already hit cache (state persisted from a recent run) — cold baseline numbers are then optimistic.
 
 ## Reference — commands, flags, env vars
 
@@ -220,4 +245,4 @@ What the extension does *not* do: it never overrides pi's `/login` or per-provid
 
 ---
 
-*Files: [`doubleword.ts`](./doubleword.ts) (the extension), [`dev-role-probe.mjs`](./dev-role-probe.mjs) (instruction-delivery probe), [`flex-bench.mjs`](./flex-bench.mjs) (tier cost/latency bench). Flex pricing and bench figures in this post used GLM-5.3-Flash figures from November 2026 — check `/doubleword-mode` output or the catalog for current numbers.*
+*Files: [`doubleword.ts`](./doubleword.ts) (the extension), [`dev-role-probe.mjs`](./dev-role-probe.mjs) (instruction-delivery probe), [`flex-bench.mjs`](./flex-bench.mjs) (tier cost/latency bench), [`agentx-cache-bench.mjs`](./agentx-cache-bench.mjs) (prompt-cache × tier bench). Flex pricing and bench figures in this post used GLM-5.3-Flash figures from November 2026 — check `/doubleword-mode` output or the catalog for current numbers.*
