@@ -53,7 +53,7 @@ Save [doubleword.ts](./doubleword.ts) into `~/.pi/agent/extensions/`:
 ```bash
 mkdir -p ~/.pi/agent/extensions
 curl -o ~/.pi/agent/extensions/doubleword.ts \
-  https://raw.githubusercontent.com/konarkmodi/pi-doubleword/dc28fe205e18c5b774cf961f01210ce6d37948bd/doubleword.ts
+  https://raw.githubusercontent.com/konarkmodi/pi-doubleword/9a452e6/doubleword.ts
 ```
 
 (Pinned to a commit SHA: pi executes extensions, so installing from a moving `main` is policy you didn't choose. Bump the SHA deliberately when you adopt updates.)
