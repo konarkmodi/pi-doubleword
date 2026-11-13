@@ -1,4 +1,4 @@
-> **This is the companion guide to [_The Price of Patience_](./the-price-of-patience.md)** — the story of how this setup was built, benchmarked, and audited. The article explains *why*; this README shows *how*.
+> **This is the companion guide to [_The Price of Patience_](https://tesseracted.com/the-price-of-patience)** — the story of how this setup was built, benchmarked, and audited. The article explains *why*; this README shows *how*.
 
 # Using Doubleword as your pi daily driver: auto-discovered models, flex billing, and instructions that actually arrive
 
